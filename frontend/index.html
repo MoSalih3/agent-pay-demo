@@ -1,0 +1,491 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agent-Pay Executive Dashboard (v4.11 Final)</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        #voice-fab {
+            position: fixed; bottom: 2rem; right: 2rem; width: 4rem; height: 4rem; background-color: #2563eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2); cursor: pointer; z-index: 1000; transition: all 0.3s ease;
+        }
+        #voice-fab:hover { background-color: #1d4ed8; transform: scale(1.05); }
+        #voice-fab span { font-size: 2rem; }
+        
+        #record-btn {
+            background-color: #10b981; border: none; border-radius: 50%; width: 4rem; height: 4rem; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); cursor: pointer; transition: all 0.3s ease;
+        }
+        #record-btn:hover { background-color: #059669; }
+        #record-btn.is-recording {
+            background-color: #ef4444; animation: pulse 1.5s infinite;
+        }
+        #record-btn span { font-size: 2rem; color: white; }
+        @keyframes pulse {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        #logs { 
+            background: #1f2937; color: #34d399; font-family: monospace; padding: 10px; overflow-y: scroll; height: 20rem; border-radius: 8px;
+        }
+        #logs div {
+            padding: 6px 10px; border-left: 3px solid #10b981; background: rgba(16, 185, 129, 0.1); border-radius: 6px; margin-bottom: 4px; animation: fadeInUp 0.4s ease-in-out;
+        }
+        #logs div.text-red-400 { border-left-color: #ef4444; background: rgba(239, 68, 68, 0.08); }
+        #logs div.text-yellow-400 { border-left-color: #fbbf24; background: rgba(251, 191, 36, 0.08); }
+        @keyframes fadeInUp { from { transform: translateY(10px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .modal { display: none; position: fixed; z-index: 20; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.7); }
+        .modal-content { background-color: #fefefe; margin: 5% auto; padding: 25px; border: 1px solid #888; width: 80%; max-width: 700px; border-radius: 12px; animation: animatetop 0.4s ease-in-out; }
+        .close { color: #aaa; float: right; font-size: 28px; font-weight: bold; }
+        .close:hover, .close:focus { color: #000; text-decoration: none; cursor: pointer; }
+        @keyframes animatetop { from {top:-300px; opacity:0} to {top:5%; opacity:1} }
+        .main-container { max-width: 1280px; margin-left: auto; margin-right: auto; padding: 0 2rem; }
+        .table-toggle-btn {
+            background: none; border: none; font-weight: bold; font-size: 1.25rem; cursor: pointer; color: #6b7280; padding: 0 0.5rem;
+        }
+        #table-container {
+            transition: max-height 0.5s ease-in-out;
+            overflow-y: hidden; /* Ensure overflow is hidden when collapsing */
+        }
+    </style>
+</head>
+<body class="bg-gray-50 font-sans" onload="initialSetup()">
+
+    <header class="bg-white shadow-md p-4 sticky top-0 z-10">
+        <div class="main-container flex justify-between items-center">
+            <h1 class="text-2xl font-bold text-blue-600">Agent-Pay 🤖 Executive Dashboard</h1>
+            <div class="flex items-center space-x-4">
+                <div id="balance-meter" class="bg-green-100 p-3 rounded-lg text-sm font-semibold border border-green-300 flex items-center space-x-2">
+                    <svg class="w-5 h-5 text-green-600" fill="currentColor" viewBox="0 0 20 20"><path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm-1-9a1 1 0 000 2h2a1 1 0 100-2h-2zm-1 3a1 1 0 100-2h4a1 1 0 100-2h-4a1 1 0 100 2h4a1 1 0 100 2z" clip-rule="evenodd"></path></svg>
+                    <span class="text-gray-600">Backend Wallet:</span>
+                    <span id="wallet-balance" class="text-green-800 font-extrabold">Loading...</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="main-container p-8">
+        
+        <div class="bg-yellow-100 border-l-4 border-yellow-500 text-yellow-700 p-4 mb-8" role="alert">
+            <p class="font-bold">Agent-Pay Executive Dashboard</p>
+            <p>Use the buttons for manual flow, or press and hold 🎤 to trigger a payment cycle with a stable, random ID.</p>
+        </div>
+
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-10">
+            <div id="step-1" class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-blue-600">
+                <h2 class="text-xl font-bold text-gray-700 mb-4">Step 1: Create Invoice & Fund Escrow</h2>
+                <p class="text-gray-500 mb-4">(Manual) This action moves 1 USDC from the Backend Wallet to the Smart Contract (Escrow).</p>
+                <button id="btn-step1" onclick="step1_createPayment()" class="w-full bg-blue-600 hover:bg-blue-700 transition duration-150 text-white py-2 rounded-lg">1. Create Payment</button>
+            </div>
+            <div id="step-2" class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-indigo-600">
+                <h2 class="text-xl font-bold text-gray-700 mb-4">Step 2: Start AI Monitoring</h2>
+                <p class="text-gray-500 mb-4">(Manual) Tells the AI Brain to move the invoice to 'MONITORING' state.</p>
+                <button id="btn-step2" onclick="step2_processInvoice()" class="w-full bg-indigo-600 hover:bg-indigo-700 transition duration-150 text-white py-2 rounded-lg" disabled>2. Start Monitoring</button>
+            </div>
+            <div id="step-3" class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-green-600">
+                <h2 class="text-xl font-bold text-gray-700 mb-4">Step 3: Simulate "Goods Shipped"</h2>
+                <p class="text-gray-500 mb-4">(Manual) Tells the AI Brain the condition is met, triggering the final payment.</p>
+                <button id="btn-step3" onclick="step3_triggerPayment()" class="w-full bg-green-600 hover:bg-green-700 transition duration-150 text-white py-2 rounded-lg" disabled>3. Trigger Payment</button>
+            </div>
+            
+            <div id="step-voice" class="bg-white p-6 rounded-xl shadow-lg border-l-4 border-green-600 flex flex-col items-center justify-center">
+                <h2 class="text-xl font-bold text-gray-700 mb-4 text-center">Step 1 (Voice)</h2>
+                <p class="text-gray-500 mb-4 text-center">Press & Hold to Record (Agent-Pay, please pay invoice XXX).</p>
+                <button id="record-btn" title="Press and hold to record invoice">
+                    <span>🎤</span>
+                </button>
+            </div>
+        </div>
+
+
+        <div class="mt-10">
+            <div class="flex items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-700">Invoice Status Tracker (Source: AI Brain)</h2>
+                <button id="table-toggle-btn" onclick="toggleTable()" class="table-toggle-btn ml-2">[+]</button>
+            </div>
+            <div id="table-container" class="bg-white p-6 rounded-xl shadow-lg" style="max-height:12rem; overflow-y: hidden;">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Invoice ID</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Time Paid</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Proof</th>
+                        </tr>
+                    </thead>
+                    <tbody id="invoice-table-body" class="bg-white divide-y divide-gray-200"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="mt-10">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold text-gray-700">System Event Logs</h2>
+                <button onclick="clearLogs()" class="text-sm bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg">Clear Logs</button>
+            </div>
+            <div id="logs" class="bg-gray-900 p-4 rounded-xl overflow-y-auto h-64 text-sm space-y-2 shadow-inner transition-all duration-300"></div>
+        </div>
+    </main>
+
+    <div id="proofModal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="document.getElementById('proofModal').style.display='none'">&times;</span>
+            <h2 class="text-2xl font-bold text-gray-800 mb-6">Payment Verification Complete</h2>
+            <div id="modal-details" class="space-y-4"></div>
+            <div class="mt-6 border-t pt-4">
+                <h3 class="text-md font-semibold text-gray-600 mb-2">Immutable Proof (Arc Testnet)</h3>
+                <a id="explorer-link-final" href="#" target="_blank" class="text-sm bg-blue-50 text-blue-700 hover:bg-blue-100 p-2 rounded-lg break-all mt-2 block">
+                    View Transaction on ArcScan
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <button id="voice-fab" onclick="openVoiceAgent()" title="Open Voice Agent Control Room">
+        <span>🔊</span>
+    </button>
+
+
+    <script>
+        // --- v3.1 CONFIGURATION ---
+        const backendUrl = 'http://localhost:5001'; // Executor
+        const agentUrl = 'http://localhost:5000';   // AI Brain
+        // --- End Configuration ---
+
+        const logElement = document.getElementById('logs');
+        const balanceElement = document.getElementById('wallet-balance');
+        const tableBody = document.getElementById('invoice-table-body');
+        const invoiceIdDisplay = document.getElementById('current-invoice-id');
+        
+        const btn1 = document.getElementById('btn-step1');
+        const btn2 = document.getElementById('btn-step2');
+        const btn3 = document.getElementById('btn-step3');
+        const recordBtn = document.getElementById('record-btn');
+
+        function generateInvoiceId() {
+            return `INV-${Math.floor(Math.random() * 900) + 100}`;
+        }
+        let currentInvoiceId = generateInvoiceId();
+        
+        function log(message, type = 'info') {
+            console.log(message);
+            // 🚀 Final Log Styling: Success (Green), Error (Red), Info (Yellow/Gray)
+            const colorClass = type === 'success' ? 'text-green-400' : type === 'error' ? 'text-red-400' : 'text-yellow-400';
+            const logEntry = document.createElement('div');
+            logEntry.className = colorClass; 
+            logEntry.innerHTML = `<span class="font-mono">${new Date().toLocaleTimeString()}</span> — ${message}`;
+            logElement.appendChild(logEntry);
+            logElement.scrollTop = logElement.scrollHeight; 
+        }
+        
+        function clearLogs() {
+            logElement.innerHTML = '';
+            log('🧹 Logs cleared by user', 'info');
+        }
+        window.clearLogs = clearLogs;
+
+        function openVoiceAgent() {
+            const agentUrl = "https://elevenlabs.io/app/talk-to?agent_id=agent_0601k92gn3p1ftdszwze7k2zx2xx";
+            const windowFeatures = "width=380,height=550,popup=true,location=no,toolbar=no,menubar=no";
+            window.open(agentUrl, "AgentPayVoiceControl", windowFeatures);
+            log('[VOICE] Voice Agent control room opened in new pop-up.', 'info');
+        }
+        window.openVoiceAgent = openVoiceAgent; 
+
+        function toggleTable() {
+            const tableContainer = document.getElementById('table-container');
+            const toggleBtn = document.getElementById('table-toggle-btn');
+            
+            // Check if currently collapsed (using the explicit '0px' check)
+            if (tableContainer.style.maxHeight === '0px') {
+                tableContainer.style.maxHeight = '20rem'; // Expand to a stable height (e.g., 20rem)
+                toggleBtn.textContent = '[-]';
+            } else {
+                tableContainer.style.maxHeight = '0px'; // Collapse completely
+                toggleBtn.textContent = '[+]';
+            }
+        }
+        window.toggleTable = toggleTable;
+
+        async function updateDashboard() {
+            try {
+                const balanceResponse = await fetch(`${backendUrl}/api/wallet-balance`);
+                // Fix for missing data in fetch
+                let balanceData;
+                if (balanceResponse.ok) {
+                    balanceData = await balanceResponse.json();
+                    balanceElement.textContent = `${parseFloat(balanceData.balance).toFixed(2)} USDC`;
+                }
+
+                const statusResponse = await fetch(`${agentUrl}/api/payment-status`);
+                if (!statusResponse.ok) return;
+
+                const statusData = await statusResponse.json();
+                tableBody.innerHTML = ''; 
+
+                if (statusData.length > 0) {
+                    statusData.sort((a, b) => {
+                        const timeA = new Date(a[1].paidAt || a[1].createdAt || 0).getTime();
+                        const timeB = new Date(b[1].paidAt || b[1].createdAt || 0).getTime();
+                        return timeB - timeA;
+                    });
+
+                    statusData.forEach(([id, details]) => {
+                        const statusColor = details.status === 'Paid' ? 'text-green-600' : (details.status === 'MONITORING' ? 'text-blue-600' : 'text-yellow-600');
+                        const paidAt = details.paidAt ? new Date(details.paidAt) : null;
+                        const timePaid = paidAt ? paidAt.toLocaleString() : '---';
+                        
+                        const proofButton = details.transactionHash ? 
+                                            `<button onclick="displayProofModal('${id}', '${details.amount}', '${details.recipientAddress}', '${details.paidAt}', '${details.transactionHash}')" class="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded hover:bg-blue-200">Verify</button>` 
+                                            : '---';
+
+                        const newRow = `
+                            <tr>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">${id}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${parseFloat(details.amount).toFixed(2)} USDC</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm font-semibold ${statusColor}">${details.status}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">${timePaid}</td>
+                                <td class="px-6 py-4 whitespace-nowrap text-sm">${proofButton}</td>
+                            </tr>
+                        `;
+                        tableBody.innerHTML += newRow;
+                    });
+                } else {
+                    tableBody.innerHTML = '<tr><td colspan="5" class="text-center py-4 text-gray-500">No active payments found.</td></tr>';
+                }
+            } catch (e) {
+                log(`[DASHBOARD] Failed to update status: ${e.message}`, 'error');
+            }
+        }
+
+        // --- Manual Step 1, 2, 3 Functions ---
+        async function step1_createPayment() {
+            log(`[Step 1] Telling AI Brain (Manual) to create invoice ${currentInvoiceId}.`, 'info');
+            btn1.disabled = true; 
+            try {
+                const response = await fetch(`${agentUrl}/api/create-payment`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        "invoiceId": currentInvoiceId,
+                        "amount": "1", // Use 1 USDC
+                        "recipientAddress": "0x57211cf52b7830f08588fea975ffccaed493eef3",
+                        "condition": "goods_shipped"
+                    })
+                });
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    let errorMessage = data.error || `Step 1 Failed: ${data.status}`;
+                    
+                    // --- 🚀 v4.10 IMPROVEMENT: Display clear balance error ---
+                    if (errorMessage.includes("INSUFFICIENT_FUNDS")) {
+                        errorMessage = `INSUFFICIENT FUNDS. Wallet Balance is too low. Please recharge with USDC from faucet.circle.com.`;
+                    }
+                    // --- 🚀 END IMPROVEMENT ---
+                    
+                    throw new Error(errorMessage);
+                }
+
+                log(`✅ [Step 1] SUCCESS! AI Brain created invoice ${currentInvoiceId}.`, 'success');
+                btn2.disabled = false; 
+                updateDashboard(); 
+            } catch (e) {
+                log(`❌ [Step 1] FAILED: ${e.message}`, 'error');
+                btn1.disabled = false;
+            }
+        }
+
+        async function step2_processInvoice() {
+            log(`[Step 2] Telling AI Brain to start monitoring ${currentInvoiceId}.`, 'info');
+            btn2.disabled = true;
+            try {
+                const response = await fetch(`${agentUrl}/api/process-invoice`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ "invoiceId": currentInvoiceId })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Step 2 Failed');
+                log(`✅ [Step 2] SUCCESS! AI Agent is now monitoring ${currentInvoiceId}.`, 'success');
+                btn3.disabled = false; 
+                updateDashboard();
+            } catch (e) {
+                log(`❌ [Step 2] FAILED: ${e.message}`, 'error');
+                btn2.disabled = false;
+            }
+        }
+
+        async function step3_triggerPayment() {
+            log(`[Step 3] Simulating RWA confirmation for ${currentInvoiceId}. Triggering AI Brain.`, 'info');
+            log(`(AI Brain will call Backend, Backend will trigger voice...)`, 'info');
+            btn3.disabled = true;
+            try {
+                const response = await fetch(`${agentUrl}/api/mock-shipping-confirmation`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ "invoiceId": currentInvoiceId })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.error || 'Step 3 Failed');
+                log(`✅ [Step 3] SUCCESS! AI Brain confirmed payment for ${currentInvoiceId}.`, 'success');
+                setTimeout(updateDashboard, 5000); 
+            } catch (e) {
+                log(`❌ [Step 3] FAILED: ${e.message}`, 'error');
+                btn3.disabled = false;
+            }
+        }
+        // --- End Manual Functions ---
+
+
+        // --- Voice Recording Logic (Final Bypass) ---
+        let mediaRecorder;
+        let audioChunks = [];
+
+        async function startRecording() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                mediaRecorder.ondataavailable = event => { audioChunks.push(event.data); };
+                mediaRecorder.onstop = sendAudioToServer;
+                audioChunks = []; 
+                mediaRecorder.start();
+                recordBtn.classList.add('is-recording');
+                recordBtn.querySelector('span').textContent = '⏹️'; 
+                log('[VOICE] Recording started... (Release to stop)', 'info');
+            } catch (e) {
+                log('❌ [VOICE] Permission denied. Please allow microphone access.', 'error');
+                console.error("Mic permission error:", e);
+            }
+        }
+
+        function stopRecording() {
+            if (mediaRecorder && mediaRecorder.state === 'recording') {
+                mediaRecorder.stop();
+                recordBtn.classList.remove('is-recording');
+                recordBtn.querySelector('span').textContent = '🎤';
+                log('[VOICE] Recording stopped. Sending to AI Brain (Bypass Mode)...', 'info');
+            }
+        }
+
+        async function sendAudioToServer() {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            const formData = new FormData();
+            formData.append('audio', audioBlob, 'invoice_recording.webm'); 
+
+            try {
+                const response = await fetch(`${agentUrl}/api/transcribe`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    let errorMessage = data.error || `Voice flow failed.`;
+                    
+                    // --- 🚀 v4.10 IMPROVEMENT: Display clear balance error for Voice ---
+                    if (errorMessage.includes("INSUFFICIENT_FUNDS")) {
+                        errorMessage = `INSUFFICIENT FUNDS. Wallet Balance is too low. Please recharge with USDC from faucet.circle.com.`;
+                    }
+                    // --- 🚀 END IMPROVEMENT ---
+
+                    throw new Error(errorMessage);
+                }
+
+                const newInvoiceId = data.details.invoiceId; 
+                log(`✅ [VOICE] SUCCESS! ID Generated: ${newInvoiceId}. Invoice created.`, 'success');
+                
+                // Auto-trigger Step 2 (Monitor)
+                log(`[VOICE] Auto-triggering Step 2 (Monitor) for ${newInvoiceId}...`, 'info');
+                const monitorResponse = await fetch(`${agentUrl}/api/process-invoice`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ "invoiceId": newInvoiceId })
+                });
+                if (!monitorResponse.ok) {
+                    log(`❌ [VOICE] Step 2 (Monitor) FAILED. Check server logs.`, 'error');
+                } else {
+                    log(`✅ [VOICE] Step 2 (Monitor) confirmed.`, 'success');
+                }
+                
+                // Auto-trigger Step 3 (Simulate)
+                log(`[VOICE] Auto-triggering Step 3 (Simulate) for ${newInvoiceId}...`, 'info');
+                const simulateResponse = await fetch(`${agentUrl}/api/mock-shipping-confirmation`, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ "invoiceId": newInvoiceId })
+                });
+                if (!simulateResponse.ok) {
+                    log(`❌ [VOICE] Step 3 (Simulate) FAILED. Check server logs.`, 'error');
+                } else {
+                    log(`✅ [VOICE] Full autonomous flow confirmed!`, 'success');
+                }
+
+                log(`[VOICE] Full autonomous flow for ${newInvoiceId} complete!`, 'success');
+                
+                setTimeout(() => {
+                    updateDashboard();
+                    const tableContainer = document.getElementById('table-container');
+                    if (tableContainer.style.maxHeight !== 'none') {
+                        toggleTable(); 
+                    }
+                }, 5000); 
+
+            } catch (e) {
+                log(`❌ [VOICE] CRITICAL FAILED: ${e.message}`, 'error');
+            }
+        }
+
+        // Add "Press and Hold" event listeners
+        recordBtn.addEventListener('mousedown', startRecording);
+        recordBtn.addEventListener('mouseup', stopRecording);
+        recordBtn.addEventListener('touchstart', startRecording);
+        recordBtn.addEventListener('touchend', stopRecording);
+        // --- End Voice Recording Logic ---
+
+
+        // --- Modal (Pop-up) Function ---
+        function displayProofModal(invoiceId, amount, recipient, paidAt, txHash) {
+            const explorerUrl = `https://testnet.arcscan.app/tx/${txHash}`;
+            const formattedTime = paidAt ? new Date(paidAt).toLocaleString() : 'N/A';
+            const detailsHTML = `
+                <div class="grid grid-cols-2 gap-4 text-sm text-gray-700 border p-4 rounded-lg bg-gray-50">
+                    <div class="font-semibold text-gray-900">Invoice ID:</div>
+                    <div>${invoiceId}</div>
+                    <div class="font-semibold text-gray-900">Amount Paid:</div>
+                    <div class="text-green-700 font-bold">${amount} USDC</div>
+                    <div class="font-semibold text-gray-900">Recipient Address:</div>
+                    <div class="break-words text-xs">${recipient}</div>
+                    <div class="font-semibold text-gray-900">Payment Time:</div>
+                    <div>${formattedTime}</div>
+                    <div class="font-semibold text-gray-900">Transaction Hash:</div>
+                    <div class="break-words text-xs text-gray-500">${txHash}</div>
+                </div>
+            `;
+            document.getElementById('modal-details').innerHTML = detailsHTML;
+            const explorerLink = document.getElementById('explorer-link-final');
+            explorerLink.href = explorerUrl;
+            explorerLink.textContent = `View Transaction ${txHash.substring(0, 10)}... on ArcScan`; 
+            document.getElementById('proofModal').style.display = 'block';
+        }
+        window.displayProofModal = displayProofModal; 
+
+        function initialSetup() {
+            if (invoiceIdDisplay) {
+                invoiceIdDisplay.textContent = currentInvoiceId;
+            }
+            updateDashboard(); 
+        }
+        window.onclick = function(event) {
+            const modal = document.getElementById('proofModal');
+            if (event.target == modal) {
+                modal.style.display = "none";
+            }
+        }
+        window.onload = initialSetup;
+    </script>
+</body>
+</html>
